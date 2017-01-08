@@ -19,12 +19,12 @@ TABLES['blog'] = (
     "CREATE TABLE `blog` ( "
     "`blogId` int(11) UNSIGNED NOT NULL AUTO_INCREMENT, "
     "`ts` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
-    "`blog` varchar(255) NOT NULL, "
-    "`title` varchar(255), "
-    "`updated` int(10), "
+    "`blog` varchar(255) UNIQUE, "
+    "`blogTitle` varchar(255), "
+    "`blogUpdated` DATETIME, "
     "`totalPosts` int(6) DEFAULT 0, "
-    "`postsRetrieved` int(11) NOT NULL DEFAULT 0, "
-    "`itemsRetrieved` int(11) NOT NULL DEFAULT 0, "
+    "`postsRetrieved` int(11) DEFAULT 0, "
+    "`itemsRetrieved` int(11) DEFAULT 0, "
     "PRIMARY KEY (`blogId`) "
     ") ENGINE=InnoDB")
 
@@ -32,9 +32,9 @@ TABLES['media'] = (
     "CREATE TABLE `media` ( "
     "`mediaId` int(11) UNSIGNED NOT NULL AUTO_INCREMENT, "
     "`ts` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
-    "`path` varchar(255) NOT NULL, "
-    "`fileName` varchar(255) NOT NULL, "
-    "`mediaTypeId` int(2) UNSIGNED NOT NULL, "
+    "`path` varchar(255), "
+    "`fileName` varchar(255) UNIQUE, "
+    "`mediaTypeId` int(2) UNSIGNED, "
     "`fileSize` int(11), "
     "`width` int(4), "
     "`height` int(4), "
@@ -49,23 +49,24 @@ TABLES['media'] = (
 TABLES['mediaInBlog'] = (
     "CREATE TABLE `mediaInBlog` ( "
     "`id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT, "
-    "`mediaId` int(11) UNSIGNED NOT NULL, "
-    "`blogId` int(11) UNSIGNED NOT NULL, "
+    "`mediaId` int(11) UNSIGNED, "
+    "`blogId` int(11) UNSIGNED, "
+    "`postId` int(15) UNSIGNED, "
     "PRIMARY KEY (`id`) "
     ") ENGINE=InnoDB")
 
 TABLES['mediaType'] = (
     "CREATE TABLE `mediaType` ( "
     "`mediaTypeId` int(2) UNSIGNED NOT NULL AUTO_INCREMENT, "
-    "`mediaType` varchar(21) NOT NULL, "
+    "`mediaType` varchar(21), "
     "PRIMARY KEY (`mediaTypeId`) "
     ") ENGINE=InnoDB")
 
 TABLES['fileType'] = (
     "CREATE TABLE `fileType` ( "
     "`fileTypeId` int(2) UNSIGNED NOT NULL AUTO_INCREMENT, "
-    "`fileType` varchar(5) NOT NULL, "
-    "`mediaTypeId` int(2) NOT NULL, "
+    "`fileType` varchar(5), "
+    "`mediaTypeId` int(2), "
     "PRIMARY KEY (`fileTypeId`) "
     ") ENGINE=InnoDB")
 
@@ -122,7 +123,7 @@ for name, ddl in TABLES.iteritems():
         cursor.execute(ddl)
     except MS.Error as err:
         if err.errno == errorcode.ER_TABLE_EXISTS_ERROR:
-            print("%s already exists.\n" % name)
+            print("Table '%s' already exists.\n" % name)
         else:
             print(err.msg)
     else:

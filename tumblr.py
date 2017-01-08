@@ -7,8 +7,11 @@ import pytumblr
 
 from pprint import pprint
 
+from datetime import datetime
+
 from modules import (consumer_key, consumer_secret, oauth_token, oauth_secret, 
                      animatedTypes, videoTypes, 
+                     queryDbforId, writeToDb, 
                      onError, numbering, checkFileExists, downloadFile)
 
 def authenticateClient(verbose):
@@ -38,60 +41,89 @@ def authenticateClient(verbose):
     
     return client
 
-def getPosts(cursor, client, blog, mainDir, downloadDir, gifDir, videoDir, keepGoing, verbose):
+def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, keepGoing, verbose):
     
     from modules import chunkSize
     
     posts = []
-    fileList = []
     
     chunkNo = 0
     postNo = 0
     
-    print "\n--- Getting posts from '%s'" % blog
-    
+    ##### parse blog
+    print "\n--- Getting posts from '%s'" % blog   
     blogContents = client.posts(blog, limit=1)
     
     if verbose:
         print "\nBlog contents:\n--------------------"
         pprint(blogContents)
         print "--------------------"
+        
+    blogTitle = blogContents['blog']['title']
+    blogUpdatedUnix = blogContents['blog']['updated']
+    blogUpdated = datetime.fromtimestamp(int(blogUpdatedUnix)).strftime('%Y-%m-%d %H:%M:%S')
+    totalPosts = blogContents['blog']['total_posts']
     
+    ##### print report
     print "\n%s:\n--------------------" % blog 
-    print "Blog: %s" % blogContents['blog']['url']
-    print "Total posts: %s" % blogContents['blog']['total_posts']
+    print "Address: %s" % blogContents['blog']['url']
+    print "Title: %s" % blogTitle
+    print "Last updated: %s" % blogUpdated
+    print "Total posts: %s" % totalPosts
     
     if blogContents['blog']['is_nsfw']:
         print "\nBlog is NOT safe for work"
         
     print
     
-    sys.exit(0)
+    ##### create entry for blog in db
+    if verbose:
+        print "--- Creating entry in db for blog '%s'" % blog
+    add_blog = ("INSERT IGNORE INTO blog "
+                "(blog, blogTitle, blogUpdated, totalPosts) "
+                "VALUES (%s, %s, %s, %s)")
+    data_blog = (blog, blogTitle, blogUpdated, totalPosts)
     
-    totalPosts = blogContents['total_posts']
+    cursor = writeToDb(cnx, cursor, add_blog, data_blog, verbose)
+    
+    ##### get id for blog
+    blogId = cursor.lastrowid
+    if blogId == 0:
+        if verbose:
+            print "+++ Blog '%s' already exist"
+        query = "SELECT blogId FROM blog WHERE blog='%s'"
+        blogId = queryDbforId(cnx, cursor, query, blog, verbose)
+    if verbose:
+        print "--- BlogId: %s" % blogId
+    
+    ##### calculate how many chunks we will try to receive
     totalChunks = int(math.ceil(totalPosts / chunkSize))
     
     while True:
-        
-        if chunkNo * chunkSize >= totalPosts:
+        print "--- Starting downloads..."
+        if chunkNo * chunkSize >= totalPosts: # check if we reached the end
             print "*** No more posts"
             break
-        else:   
-            chunkNo += 1
+        else: 
             partNo = 0
-                
-            fileList = []
             
-            print "--- Getting %s%s chunk..." % (chunkNo, numbering(chunkNo))
-            print "    Post %s to %s of %s" % (totalPosts - chunkNo * chunkSize + 1, totalPosts - (chunkNo -1) * chunkSize, totalPosts)
+            chunkNo += 1
             
             offset = totalPosts - chunkNo * chunkSize
             if offset < 0:
                 chunkSize = chunkSize + offset
                 offset = 0
-            #print "    Offset: %s" % offset
-            #print "    Chunk size: %s" % chunkSize
-            blogContents = client.posts(blog, offset=offset, limit=chunkSize)
+            
+            print "--- Getting %s%s chunk..." % (chunkNo, numbering(chunkNo))
+            print "    Offset: %s" % offset
+            print "    Chunk size: %s" % chunkSize
+            print "    Post %s to %s of %s" % (totalPosts - chunkNo * chunkSize + 1, 
+                                               totalPosts - (chunkNo -1) * chunkSize, 
+                                               totalPosts)
+
+            blogContents = client.posts(blog, # get posts from blog, start at offset and get chunkSize posts
+                                        offset=offset, 
+                                        limit=chunkSize)
             
             for line in blogContents['posts']:
                 postNo += 1
@@ -100,27 +132,29 @@ def getPosts(cursor, client, blog, mainDir, downloadDir, gifDir, videoDir, keepG
                 print "    Post: %s / %s" % (postNo, totalPosts)
                 print "    Chunk: %s / %s" % (chunkNo, totalChunks)
                 print "    Part: %s / %s" % (partNo, chunkSize)
-                #if verbose:
-                #    print line
+                if verbose:
+                    print "Post:\n----------"
+                    pprint(line)
+                    print "----------"
                 posts.append(line)
-                
+
                 mediaList = findMedia(line, keepGoing, verbose)
                     
-                for line in mediaList:
-                    downloadSuccess = False
-                    fileSize = 0
-                    
-                    url, savePath = checkMedia(line, downloadDir, gifDir, videoDir, verbose)
-                    
-                    fileExists, filePath, fileName = checkFileExists(url, savePath, verbose)
-                    
-                    if not fileExists:                        
-                        downloadSuccess, fileName, filePath = downloadFile(url, savePath, verbose)
-                    
-                        if verbose and not downloadSuccess:
-                            print "+++ Failed to download file"
-                    else:
-                        print "+++ Already exists. Skipping file..."
+                if mediaList:
+                    sys.exit(0)
+                    for line in mediaList:
+                        downloadSuccess = False                    
+                        url, savePath = checkMedia(line, downloadDir, animatedDir, videoDir, verbose)
+                        
+                        fileExists, filePath, fileName = checkFileExists(url, savePath, verbose)
+                        
+                        if not fileExists:                        
+                            downloadSuccess, fileName, filePath = downloadFile(url, savePath, verbose)
+                        
+                            if verbose and not downloadSuccess:
+                                print "+++ Failed to download file"
+                        else:
+                            print "+++ Already exists. Skipping file..."
                     
             print "\n--- Posts processed: %s" % len(posts)
     
@@ -136,25 +170,24 @@ def findMedia(post, keepGoing, verbose):
     mediaList = []
     
     if verbose:
-        print "Post:"
-        print post
+        print "Searching for media in post..."
         
     if "photos" in post:
         for line in post["photos"]:
-            print "Original size url: \n%s" % line["original_size"]["url"]
-            if verbose:
-                print "Width x height: %s x %s" % (line["original_size"]["width"], line["original_size"]["height"])
+            print "--- Found photo"
             mediaList.append(line["original_size"]["url"])
     elif "video_url" in post:
-        print "Video url: \n %s" %  post["video_url"]
+        print "Found video"
         mediaList.append(post["video_url"])
     else:
+        if verbose:
+            print "+++ Did not find photos or video"
         if not keepGoing:
             onError(5, "Did not find photos or video")
         
     return mediaList   
     
-def checkMedia(line, downloadDir, gifDir, videoDir, verbose):
+def checkMedia(line, downloadDir, animatedDir, videoDir, verbose):
     url = line
     
     savePath = downloadDir
@@ -163,10 +196,10 @@ def checkMedia(line, downloadDir, gifDir, videoDir, verbose):
         if url.lower().endswith(fileType):
             if verbose:
                 print "File is animated"
-            savePath = gifDir
+            savePath = animatedDir
             break
     
-    if savePath != gifDir:
+    if savePath != animatedDir:
         for fileType in videoTypes:
             if url.lower().endswith(fileType):
                 if verbose:
@@ -174,7 +207,7 @@ def checkMedia(line, downloadDir, gifDir, videoDir, verbose):
                 savePath = videoDir
                 break
     
-    if verbose and savePath != gifDir and savePath != videoDir:
+    if verbose and savePath != animatedDir and savePath != videoDir:
         print "File is not animated and not video"
         
     return url, savePath

@@ -5,7 +5,7 @@
 import sys, getopt
 
 from modules import (onError, usage, dbConnect, checkDirectories, checkBlogExists, 
-                     defaultDownloadDir, subDir, gifDir, videoDir)
+                     defaultDownloadDir, subDir, animatedDir, videoDir)
 
 from tumblr import authenticateClient, getPosts
 
@@ -39,12 +39,12 @@ if not checkBlogExists(blog, verbose):
     onError(7, "Blog %s does not exist" % blog)
 
 # connect to database
-cursor = dbConnect(verbose)
+cnx, cursor = dbConnect(verbose)
 
-mainDir, downloadDir, gifDir, videoDir = checkDirectories(defaultDownloadDir, subDir, blog, gifDir, videoDir, verbose)
+mainDir, downloadDir, animatedDir, videoDir = checkDirectories(defaultDownloadDir, subDir, blog, animatedDir, videoDir, verbose)
 
 client = authenticateClient(verbose)
 
-posts = getPosts(cursor, client, blog, mainDir, downloadDir, gifDir, videoDir, keepGoing, verbose)
+posts = getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, keepGoing, verbose)
 
 

@@ -29,7 +29,7 @@ chunkSize = int(config.get('tumblr_options', 'chunkSize'))
 
 defaultDownloadDir = config.get('directory_settings', 'defaultDownloadDir').lstrip(" ").rstrip(" ")
 subDir = config.get('directory_settings', 'subDir').lstrip(" ").rstrip(" ")
-gifDir = config.get('directory_settings', 'gifDir').lstrip(" ").rstrip(" ")
+animatedDir = config.get('directory_settings', 'animatedDir').lstrip(" ").rstrip(" ")
 videoDir = config.get('directory_settings', 'videoDir').lstrip(" ").rstrip(" ")
 
 tempFileExtension = config.get('directory_settings', 'tempFileExtension')
@@ -49,7 +49,7 @@ def onError(errorCode, extra):
     elif errorCode == 2:
         print "No options given"
         usage(errorCode)
-    elif errorCode in (3, 4, 5, 7):
+    elif errorCode in (3, 4, 5, 7, 8, 9):
         print extra
         sys.exit(errorCode)
     elif errorCode == 6:
@@ -107,9 +107,56 @@ def dbConnect(verbose):
 
     cursor = cnx.cursor()
 
+    return cnx, cursor
+
+def queryDbforId(cnx, cursor, query, data, verbose):
+    ids = 0
+    
+    if verbose:
+        print "--- Executing sql..."
+        print "    mysql> %s;" % query, data
+        
+    try:
+        cursor.execute(query % data)
+    except MS.Error as err:
+        onError(9, "Statement: %s\n%s" % (cursor.statement, err))
+        
+    if verbose:
+        print "--- SQL statement was:\n    %s" % cursor.statement
+        
+    for line in cursor:
+        ids += 1
+        rowId = line
+        if verbose:
+            print "RowId[%s]: %s" % (ids, rowId)
+        
+    if ids == 1:
+        rowId = int(line[0])
+    elif ids >=2:
+        onError(10, "Multiple rows found.\nBetter look into this")
+    else:
+        rowId = 0
+        
+    return rowId
+
+def writeToDb(cnx, cursor, sql, data, verbose):
+    if verbose:
+        print "--- Executing sql..."
+        print "    mysql> %s;" % sql, data
+    
+    try:
+        cursor.execute(sql, data)
+    except MS.Error as err:
+        onError(8, "Statement: %s\n%s" % (cursor.statement, err))
+        
+    if verbose:
+        print "--- SQL statement was:\n    %s" % cursor.statement
+        
+    cnx.commit()
+    
     return cursor
 
-def checkDirectories(defaultDownloadDir, subDir, blog, gifDir, videoDir, verbose):
+def checkDirectories(defaultDownloadDir, subDir, blog, animatedDir, videoDir, verbose):
     downloadDir = defaultDownloadDir
     
     if not downloadDir.startswith("/"):
@@ -128,13 +175,13 @@ def checkDirectories(defaultDownloadDir, subDir, blog, gifDir, videoDir, verbose
     downloadDir = os.path.join(mainDir, blog)
     checkDirectory(downloadDir, verbose)
     
-    gifDir = os.path.join(downloadDir, gifDir)
-    checkDirectory(gifDir, verbose)
+    animatedDir = os.path.join(downloadDir, animatedDir)
+    checkDirectory(animatedDir, verbose)
     
     videoDir = os.path.join(downloadDir, videoDir)
     checkDirectory(videoDir, verbose)
     
-    return mainDir, downloadDir, gifDir, videoDir
+    return mainDir, downloadDir, animatedDir, videoDir
 
 def checkDirectory(path, verbose):
     if os.path.isdir(path):
