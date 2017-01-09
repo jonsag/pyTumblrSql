@@ -12,7 +12,7 @@ from datetime import datetime
 from modules import (consumer_key, consumer_secret, oauth_token, oauth_secret, 
                      animatedTypes, videoTypes, 
                      queryDbforId, writeToDb, 
-                     onError, numbering, checkFileExists, downloadFile)
+                     onError, numbering, checkFileExists, downloadFile, getMediaInfo)
 
 def authenticateClient(verbose):
     
@@ -139,22 +139,38 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                 posts.append(line)
 
                 mediaList = findMedia(line, keepGoing, verbose)
+                
+                mediaId = 0
+                downloadSuccess = False
                     
                 if mediaList:
-                    sys.exit(0)
                     for line in mediaList:
                         downloadSuccess = False                    
                         url, savePath = checkMedia(line, downloadDir, animatedDir, videoDir, verbose)
                         
-                        fileExists, filePath, fileName = checkFileExists(url, savePath, verbose)
+                        #fileExists, filePath, fileName = checkFileExists(url, savePath, verbose)
+                        query = "SELECT blogId FROM blog WHERE blog='%s'"
+                        fileName = url.split('/')[-1]
+                        if verbose:
+                            print "--- Checking if file is in database..."
+                        mediaId = queryDbforId(cnx, cursor, query, fileName, verbose)
                         
-                        if not fileExists:                        
+                        if not mediaId:                        
                             downloadSuccess, fileName, filePath = downloadFile(url, savePath, verbose)
-                        
+                            if downloadSuccess:
+                                if verbose:
+                                    print "--- Adding to database..."
+                                getMediaInfo(filePath, verbose)
                             if verbose and not downloadSuccess:
-                                print "+++ Failed to download file"
+                                print "*** Failed to download file"
                         else:
-                            print "+++ Already exists. Skipping file..."
+                            if verbose:
+                                print "+++ Already exists\n    Adding to database for '%s'" % blog
+                            else:
+                                print "+++ Already exists. Skipping file..."
+                            
+                if downloadSuccess or mediaId:                
+                    sys.exit(0)
                     
             print "\n--- Posts processed: %s" % len(posts)
     
@@ -170,14 +186,14 @@ def findMedia(post, keepGoing, verbose):
     mediaList = []
     
     if verbose:
-        print "Searching for media in post..."
+        print "--- Searching for media in post..."
         
     if "photos" in post:
         for line in post["photos"]:
             print "--- Found photo"
             mediaList.append(line["original_size"]["url"])
     elif "video_url" in post:
-        print "Found video"
+        print "--- Found video"
         mediaList.append(post["video_url"])
     else:
         if verbose:
@@ -195,7 +211,7 @@ def checkMedia(line, downloadDir, animatedDir, videoDir, verbose):
     for fileType in animatedTypes:
         if url.lower().endswith(fileType):
             if verbose:
-                print "File is animated"
+                print "--- File is animated"
             savePath = animatedDir
             break
     
@@ -203,12 +219,12 @@ def checkMedia(line, downloadDir, animatedDir, videoDir, verbose):
         for fileType in videoTypes:
             if url.lower().endswith(fileType):
                 if verbose:
-                    print "File is video"
+                    print "--- File is video"
                 savePath = videoDir
                 break
     
     if verbose and savePath != animatedDir and savePath != videoDir:
-        print "File is not animated and not video"
+        print "--- File is not animated and not video"
         
     return url, savePath
 

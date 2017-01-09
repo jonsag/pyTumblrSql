@@ -36,8 +36,12 @@ tempFileExtension = config.get('directory_settings', 'tempFileExtension')
 logFileName = config.get('directory_settings', 'logFileName')
 logFileExtension = config.get('directory_settings', 'logFileExtension')
 
+mediaTypes = config.get('file_types', 'mediaTypes').replace(" ", "").split(",")
+
 animatedTypes = config.get('file_types', 'animatedTypes').replace(" ", "").split(",")
 videoTypes = config.get('file_types', 'videoTypes').replace(" ", "").split(",")
+pictureTypes = config.get('file_types', 'pictureTypes').replace(" ", "").split(",")
+audioTypes = config.get('file_types', 'audioTypes').replace(" ", "").split(",")
 
 fileSizeSuffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 
@@ -229,19 +233,12 @@ def downloadFile(url, path, verbose):
     
     if verbose:
         print
-        print "Downloading \n%s \nto \n%s" % (url, fullPath)
+        print "--- Will try to download \n%s \nto \n%s" % (url, fullPath)
     
-    # Open the url
-    print "Downloading..."
-    try:
+    print "--- Downloading..."
+    try: # open the url
         f = urlopen(url)
-
-        # Open our local file for writing
-        with open("%s.%s" % (fullPath, tempFileExtension), "wb") as local_file:
-            local_file.write(f.read())
-
-    #handle errors
-    except HTTPError, e:
+    except HTTPError, e: # handle errors
         print "HTTP Error:", e.code, url
         downloadSuccess = False
     except URLError, e:
@@ -249,13 +246,25 @@ def downloadFile(url, path, verbose):
         downloadSuccess = False
     except:
         print "Error"
-        downloadSuccess = False
-        
+        downloadSuccess = False        
     else:
+        print "--- Download finished\n    Writing file..."
+        # Open our local file for writing
+        with open("%s.%s" % (fullPath, tempFileExtension), "wb") as local_file:
+            local_file.write(f.read())
+        if verbose:
+            print "--- Renaming file..."
         os.rename("%s.%s" % (fullPath, tempFileExtension), fullPath)
         downloadSuccess = True
         
     return downloadSuccess, fileName, fullPath
+
+def getMediaInfo(fullPath, verbose):
+    if verbose:
+        print "--- Getting media info..."
+        
+        
+    sys.exit(0)
         
 def humanFileSize(nbytes):
     if nbytes == 0: return '0 B'

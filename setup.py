@@ -10,8 +10,10 @@ from mysql.connector import errorcode
 import sys, getpass
 
 from modules import (dbHost, dbPort, dbRootUser, 
-                     dbName, dbUser, dbPass)
+                     dbName, dbUser, dbPass, 
+                     mediaTypes, animatedTypes, videoTypes, pictureTypes, audioTypes)
 
+##### define tables
 DB_NAME = dbName
 
 TABLES = {}
@@ -58,24 +60,27 @@ TABLES['mediaInBlog'] = (
 TABLES['mediaType'] = (
     "CREATE TABLE `mediaType` ( "
     "`mediaTypeId` int(2) UNSIGNED NOT NULL AUTO_INCREMENT, "
-    "`mediaType` varchar(21), "
+    "`mediaType` varchar(21) UNIQUE, "
     "PRIMARY KEY (`mediaTypeId`) "
     ") ENGINE=InnoDB")
 
 TABLES['fileType'] = (
     "CREATE TABLE `fileType` ( "
     "`fileTypeId` int(2) UNSIGNED NOT NULL AUTO_INCREMENT, "
-    "`fileType` varchar(5), "
+    "`fileType` varchar(5) UNIQUE, "
     "`mediaTypeId` int(2), "
     "PRIMARY KEY (`fileTypeId`) "
     ") ENGINE=InnoDB")
 
+##### create user sql
 createUserSql = "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s'" % (dbUser, dbHost, dbPass)
-#grantPrivilegesSql = "GRANT ALL ON '%s'.* TO '%s'@'%s' IDENTIFIED BY '%s'" % (dbName, dbUser, dbHost, dbPass)
-grantPrivilegesSql = "GRANT ALL ON %s.* TO '%s'@'%s'" % (dbName, dbUser, dbHost)
+##### grant privileges sql
+#grantPrivilegesSql = "GRANT ALL ON %s.* TO '%s'@'%s'" % (dbName, dbUser, dbHost)
 
+##### get password for root
 rootPass = getpass.getpass('Enter MySql root password:')
 
+##### connect to database
 try:
     cnx = MS.connect(host = dbHost, 
                      port = dbPort, 
@@ -89,12 +94,12 @@ except MS.Error as err:
         print("Database does not exist")
     else:
         print(err)
-    
     sys.exit(1)
 
+##### create cursor
 cursor = cnx.cursor()
 
-def create_database(cursor):
+def create_database(cursor): # create database
     print("\nCreating database '{}'...".format(DB_NAME))
     print("mysql> CREATE DATABASE {} DEFAULT CHARACTER SET 'utf8';".format(DB_NAME))
     try:
@@ -106,6 +111,7 @@ def create_database(cursor):
     else:
         print("OK")
 
+##### create database
 try:
     cnx.database = DB_NAME  
 except MS.Error as err:
@@ -116,6 +122,7 @@ except MS.Error as err:
         print(err)
         exit(1)
         
+##### create tables
 for name, ddl in TABLES.iteritems():
     print("\nCreating table '{}'...".format(name))
     print("mysql> {};".format(ddl))
@@ -128,9 +135,8 @@ for name, ddl in TABLES.iteritems():
             print(err.msg)
     else:
         print("OK")
-     
-cursor.execute("use mysql")
-        
+
+##### create regular user     
 print("\nCreating user '{}'...".format(dbUser))
 print("mysql> {};".format(createUserSql))
 try:
@@ -140,20 +146,98 @@ except MS.Error as err:
 else:
     print("OK")
     
-#print("\nGranting privileges to '{}'...".format(dbUser))
-#print("mysql> {};".format(grantPrivilegesSql))
-#try:
-#    cursor.execute(createUserSql)
-#except MS.Error as err:
-#    print(err.msg)
-#else:
-#    print("OK")
+##### write values to tables
+def add_media_type(cnx, cursor, dbName, mediaType): # add media type
+    print("\nAdding media type '%s' to table '%s.mediaType'..." % (mediaType, 
+                                                                   dbName))
+    print("mysql> INSERT IGNORE INTO %s.mediaType (mediaType) VALUES ('%s');" % (dbName, 
+                                                                                 mediaType))
 
+    try:
+        cursor.execute("INSERT IGNORE INTO %s.mediaType (mediaType) VALUES ('%s')" % (dbName, 
+                                                                                      mediaType))
+    except MS.Error as err:
+        print(err)
+    else:
+        print("OK") 
+       
+    cnx.commit()
+    
+def queryDbforId(cnx, cursor, dbName, mediaType):  
+    print("\nFinding media type id type for %s files..." % mediaType)
+    print("mysql> SELECT mediaTypeId FROM %s.mediaType WHERE mediaType='%s';" % (dbName, 
+                                                                                 mediaType))   
+    try:
+        cursor.execute("SELECT mediaTypeId FROM %s.mediaType WHERE mediaType='%s';" % (dbName, 
+                                                                                       mediaType))
+    except MS.Error as err:
+        print(err)
+     
+    for line in cursor:
+        rowId = line
+        
+    rowId = int(line[0])
+    
+    if rowId != 0:
+        print("OK")
+    else:
+        print("Something wrong here\nId was 0")
+        
+    return rowId
+    
+def add_file_type(cnx, cursor, fileType, mediaType, mediaTypeId): # add file type
+    print("\nAdding file type '%s' as '%s'..." % (fileType, 
+                                                      mediaType))
+    print("mysql> INSERT IGNORE INTO %s.fileType (fileType, mediaTypeId) VALUES ('%s', '%s');" % (dbName, 
+                                                                                                  fileType, 
+                                                                                                  mediaTypeId))
+
+    try:
+        cursor.execute("INSERT IGNORE INTO %s.fileType (fileType, mediaTypeId) VALUES ('%s', '%s')" % (dbName, 
+                                                                                                       fileType, 
+                                                                                                       mediaTypeId))
+    except MS.Error as err:
+        print(err)
+    else:
+        print("OK")
+
+    cnx.commit()
+
+##### add media types
+print("\nAdding media types to table 'mediaType'...")
+for mediaType in mediaTypes:
+    data_mediaType = (dbName, mediaType)
+    add_media_type(cnx, cursor, dbName, mediaType)
+    
+##### make sure changes are written
 cnx.commit()
 
+##### add animated types
+print("\nAdding file types to table 'fileType'...")
+animatedTypeId = queryDbforId(cnx, cursor, dbName, "animated")
+for animatedType in animatedTypes:
+    add_file_type(cnx, cursor, animatedType, "animated", animatedTypeId)
+    
+##### add video types
+videoTypeId = queryDbforId(cnx, cursor, dbName, "video")
+for videoType in videoTypes:
+    add_file_type(cnx, cursor, videoType, "video", videoTypeId)
+    
+##### add picture types
+pictureTypeId = queryDbforId(cnx, cursor, dbName, "picture")
+for pictureType in pictureTypes:
+    add_file_type(cnx, cursor, pictureType, "picture", pictureTypeId)
+
+##### add audio types
+audioTypeId = queryDbforId(cnx, cursor, dbName, "audio")
+for audioType in audioTypes:
+    add_file_type(cnx, cursor, audioType, "audio", audioTypeId)
+
+##### close everything
 cursor.close()
 cnx.close()
 
+##### instruct how to grant privileges
 print("\nRun the following command in terminal:")
 print("echo GRANT ALL ON '%s'.* TO '%s'@'%s' | mysql -uroot -p mysql\n" % (dbName, dbUser, dbHost))
 
