@@ -285,7 +285,7 @@ def downloadFile(url, path, verbose):
     if verbose:
         print "--- Will try to download \n    %s \n    to \n    %s" % (url, fullPath)
     
-    print "--- Downloading..."
+    print "--- Downloading %s..." % fileName
     try: # open the url
         f = urlopen(url)
     except HTTPError, e: # handle errors
@@ -298,7 +298,7 @@ def downloadFile(url, path, verbose):
         print "Error"
         downloadSuccess = False        
     else:
-        print "--- Download finished\n    Writing file..."
+        print "--- Writing file..."
         # Open our local file for writing
         with open("%s.%s" % (fullPath, tempFileExtension), "wb") as local_file:
             local_file.write(f.read())
@@ -363,7 +363,7 @@ def getMediaInfo(fullPath, mediaType, keepGoing, verbose):
         print "    Duration:\t\t%s ms" % duration
         
     ##### video info
-    if mediaType:# == "video":
+    if mediaType == "video":
         cmd = "mediainfo %s '%s'" % (("--Inform=Video;"
                                       "%Width%,"
                                       "%Height%,"
@@ -397,7 +397,7 @@ def getMediaInfo(fullPath, mediaType, keepGoing, verbose):
             print "    Video format:\t%s" % videoFormat
             
     ##### image info
-    if mediaType:# == "photo" or mediaType == "animated":
+    if mediaType == "photo" or mediaType == "animated":
         cmd = "mediainfo %s '%s'" % (("--Inform=Image;"
                                       "%Width%,"
                                       "%Height%"), fullPath)   
@@ -425,7 +425,7 @@ def getMediaInfo(fullPath, mediaType, keepGoing, verbose):
             print "    Height:\t\t%s px" % height
     
     ##### audio
-    if mediaType:# == "video" or mediaType == "audio":
+    if mediaType == "video" or mediaType == "audio":
         cmd = "mediainfo %s '%s'" % (("--Inform=Audio;"
                                       "%Format%"), fullPath)   
         

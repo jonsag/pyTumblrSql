@@ -90,14 +90,25 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
     
     ##### get id for blog
     blogId = cursor.lastrowid
-    if blogId == 0:
+    if verbose:
+        print "--- BlogId a: %s" % blogId
+    if blogId == 0: # blog already exists
         if verbose:
             print "+++ Blog '%s' already exist"
         query = "SELECT blogId FROM blog WHERE blog='%s'"
         blogId = queryDbforId(cnx, cursor, query, blog, verbose)
+        if verbose:
+            print "--- BlogId b: %s" % blogId
+        print "--- Updating blog info..."
+        update_blog = ("UPDATE blog "
+                       "SET blogUpdated=%s, totalPosts=%s "
+                       "WHERE blog=%s")
+        data_update_blog = (blogUpdated, totalPosts, blog)
+        cursor = writeToDb(cnx, cursor, update_blog, data_update_blog, verbose)
+        
     if verbose:
         print "--- BlogId: %s" % blogId
-    
+
     ##### calculate how many chunks we will try to receive
     totalChunks = int(math.ceil(totalPosts / chunkSize))
     
@@ -127,7 +138,7 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                                         offset=offset, 
                                         limit=chunkSize)
             
-            for post in blogContents['posts']:
+            for post in reversed(blogContents['posts']): # run through posts in chunk
                 postNo += 1
                 partNo += 1
                 print "\n--- Blog: %s" % blog
@@ -135,10 +146,13 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                 print "    Chunk: %s / %s" % (chunkNo, totalChunks)
                 print "    Part: %s / %s" % (partNo, chunkSize)
                 
-                postId = post["id"]
+                for line in post['trail']:
+                    postId = line['post']['id']
+                print "\n--- Post id: %s" % postId
                 
+                postTime = post['date']
+                print "--- Post time: %s" % postTime.rstrip(' GMT')
                 if verbose:
-                    print "--- Post id: %s" % postId
                     print "Post:\n----------"
                     pprint(post)
                     print "----------"
@@ -162,10 +176,13 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                             print "--- Media type: %s" % mediaType
                         if mediaType == "animated":
                             savePath = animatedDir
+                            
                         elif mediaType == "video":
                             savePath = videoDir
+                            
                         elif mediaType == "picture":
                             savePath = downloadDir
+                            #sys.exit(0)
                         if verbose:
                             print "--- Will save to:\n    %s" % savePath
 
@@ -223,9 +240,9 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                             if verbose:
                                 print "--- Not in table\n    Adding..."
                             add_media_in_blog = ("INSERT IGNORE INTO mediaInBlog "
-                                                 "(mediaId, blogId, postId) "
-                                                 "VALUES (%s, %s, %s)")
-                            data_media_in_blog = (mediaId, blogId, postId)
+                                                 "(mediaId, blogId, postId, postTime) "
+                                                 "VALUES (%s, %s, %s, %s)")
+                            data_media_in_blog = (mediaId, blogId, postId, postTime)
                             cursor = writeToDb(cnx, cursor, add_media_in_blog, data_media_in_blog, verbose)
                             
                 #if downloadSuccess or not mediaId:                
@@ -250,7 +267,9 @@ def findMedia(cnx, cursor, post, keepGoing, verbose):
     if verbose:
         print "--- Searching for media in post..."
         
-    if "photos" in post:
+    postType = post['type']
+        
+    if postType == "photo":
         for line in post["photos"]:
             print "--- Found photo"
             photoUrl = line["original_size"]["url"]
@@ -264,7 +283,7 @@ def findMedia(cnx, cursor, post, keepGoing, verbose):
                 print "--- Adding it to media list..."
                 print "    Url: %s" % photoUrl
                 print "    Media type id: %s" % mediaTypeId
-    elif "video_url" in post:
+    elif postType == "video":
         print "--- Found video"
         videoUrl = post["video_url"]
         path = urlparse(videoUrl).path
@@ -278,6 +297,7 @@ def findMedia(cnx, cursor, post, keepGoing, verbose):
             print "    Url: %s" % videoUrl
             print "    Media type id: %s" % mediaTypeId
     else:
+        print "--- Post type: %s -----------------------------------------------------" % postType
         if verbose:
             print "+++ Did not find photos or video"
         if not keepGoing:
@@ -291,29 +311,19 @@ def findMedia(cnx, cursor, post, keepGoing, verbose):
     return mediaList   
     
 
-#def checkMedia(mediaUrl, mediaTypeId, downloadDir, animatedDir, videoDir, verbose):
-#    
-#    savePath = downloadDir
-#    
-#    for fileType in animatedTypes:
-#        if mediaUrl.lower().endswith(fileType):
-#            if verbose:
-#                print "--- File is animated"
-#            savePath = animatedDir
-#            break
-#    
-#    if savePath != animatedDir:
-#        for fileType in videoTypes:
-#            if mediaUrl.lower().endswith(fileType):
-#                if verbose:
-#                    print "--- File is video"
-#                savePath = videoDir
-#                break
-#    
-#    if verbose and savePath != animatedDir and savePath != videoDir:
-#        print "--- File is not animated and not video"
-#        
-#    return mediaUrl, savePath
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

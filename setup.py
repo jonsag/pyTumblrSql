@@ -54,6 +54,7 @@ TABLES['mediaInBlog'] = (
     "`mediaId` int(11) UNSIGNED, "
     "`blogId` int(11) UNSIGNED, "
     "`postId` int(15) UNSIGNED, "
+    "`postTime` DATETIME, "
     "PRIMARY KEY (`id`) "
     ") ENGINE=InnoDB")
 
