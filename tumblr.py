@@ -9,9 +9,11 @@ from pprint import pprint
 
 from datetime import datetime
 
+from urlparse import urlparse
+
 from modules import (consumer_key, consumer_secret, oauth_token, oauth_secret, 
                      animatedTypes, videoTypes, 
-                     queryDbforId, writeToDb, 
+                     queryDbforId, queryDbSingleAnswer, writeToDb, 
                      onError, numbering, checkFileExists, downloadFile, getMediaInfo)
 
 def authenticateClient(verbose):
@@ -125,52 +127,109 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                                         offset=offset, 
                                         limit=chunkSize)
             
-            for line in blogContents['posts']:
+            for post in blogContents['posts']:
                 postNo += 1
                 partNo += 1
                 print "\n--- Blog: %s" % blog
                 print "    Post: %s / %s" % (postNo, totalPosts)
                 print "    Chunk: %s / %s" % (chunkNo, totalChunks)
                 print "    Part: %s / %s" % (partNo, chunkSize)
+                
+                postId = post["id"]
+                
                 if verbose:
+                    print "--- Post id: %s" % postId
                     print "Post:\n----------"
-                    pprint(line)
+                    pprint(post)
                     print "----------"
-                posts.append(line)
-
-                mediaList = findMedia(line, keepGoing, verbose)
+                posts.append(post)
+                
+                mediaList = findMedia(cnx, cursor, post, keepGoing, verbose) # check if post contains any media
                 
                 mediaId = 0
                 downloadSuccess = False
                     
                 if mediaList:
-                    for line in mediaList:
-                        downloadSuccess = False                    
-                        url, savePath = checkMedia(line, downloadDir, animatedDir, videoDir, verbose)
+                    for mediaUrl, mediaTypeId in mediaList:
+                        downloadSuccess = False     
+                          
+                        ##### determine where to save file     
+                        if verbose:
+                            print "--- Looking up media type..."        
+                        query = "SELECT mediaType FROM mediaType WHERE mediaTypeId='%s'"
+                        mediaType = queryDbSingleAnswer(cnx, cursor, query, mediaTypeId, verbose)
+                        if verbose:
+                            print "--- Media type: %s" % mediaType
+                        if mediaType == "animated":
+                            savePath = animatedDir
+                        elif mediaType == "video":
+                            savePath = videoDir
+                        elif mediaType == "picture":
+                            savePath = downloadDir
+                        if verbose:
+                            print "--- Will save to:\n    %s" % savePath
+
+                        query = "SELECT mediaId FROM media WHERE fileName='%s'"
                         
-                        #fileExists, filePath, fileName = checkFileExists(url, savePath, verbose)
-                        query = "SELECT blogId FROM blog WHERE blog='%s'"
-                        fileName = url.split('/')[-1]
+                        ##### check if file already exists
+                        fileName = mediaUrl.split('/')[-1]
                         if verbose:
                             print "--- Checking if file is in database..."
-                        mediaId = queryDbforId(cnx, cursor, query, fileName, verbose)
+                        mediaId = queryDbforId(cnx, cursor, query, fileName, verbose) # returns >0 if media is in db
                         
-                        if not mediaId:                        
-                            downloadSuccess, fileName, filePath = downloadFile(url, savePath, verbose)
+                        downloadSuccess = True
+                        if not mediaId:      
+                            if verbose:
+                                print "--- File is not in database"                  
+                            downloadSuccess, fileName, filePath = downloadFile(mediaUrl, savePath, verbose)
                             if downloadSuccess:
                                 if verbose:
                                     print "--- Adding to database..."
-                                getMediaInfo(filePath, verbose)
+                                (fileSize, width, height, duration, 
+                                 format, videoFormat, audioFormat, 
+                                 bitRate) = getMediaInfo(filePath, 
+                                                         mediaType, keepGoing, verbose) # get media info
+                                ##### write media info to db
+                                add_media = ("INSERT IGNORE INTO media "
+                                             "(path, filename, mediaTypeId, fileSize, "
+                                             "width, height, duration, format, "
+                                             "videoFormat, audioFormat, bitRate) "
+                                             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
+                                data_media = (savePath, fileName, mediaTypeId, fileSize, 
+                                              width, height, duration, format, 
+                                              videoFormat, audioFormat, bitRate)
+                                cursor = writeToDb(cnx, cursor, add_media, data_media, verbose)
+                                mediaId = cursor.lastrowid
                             if verbose and not downloadSuccess:
                                 print "*** Failed to download file"
                         else:
                             if verbose:
-                                print "+++ Already exists\n    Adding to database for '%s'" % blog
+                                print "+++ Already exists\n    Adding to database for '%s' if not already there..." % blog
                             else:
                                 print "+++ Already exists. Skipping file..."
+                        
+                        if verbose:
+                            print "--- Checking if this media and post is registered to this blog..."
+                        query_mediaInBlog = ("SELECT id FROM mediaInBlog WHERE "
+                                             "mediaId='%s' AND "
+                                             "blogid='%s' AND "
+                                             "postId='%s'")
+                        data_mediaInBlog = (mediaId, blogId, postId)
+                        isInTable = queryDbforId(cnx, cursor, query_mediaInBlog, data_mediaInBlog, verbose)
+                        
+                        if not isInTable and downloadSuccess:
+                            if mediaId == 0:
+                                sys.exit(0)
+                            if verbose:
+                                print "--- Not in table\n    Adding..."
+                            add_media_in_blog = ("INSERT IGNORE INTO mediaInBlog "
+                                                 "(mediaId, blogId, postId) "
+                                                 "VALUES (%s, %s, %s)")
+                            data_media_in_blog = (mediaId, blogId, postId)
+                            cursor = writeToDb(cnx, cursor, add_media_in_blog, data_media_in_blog, verbose)
                             
-                if downloadSuccess or mediaId:                
-                    sys.exit(0)
+                #if downloadSuccess or not mediaId:                
+                #    sys.exit(0)
                     
             print "\n--- Posts processed: %s" % len(posts)
     
@@ -182,8 +241,11 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
     posts = blogContents
     return posts
     
-def findMedia(post, keepGoing, verbose):
+def findMedia(cnx, cursor, post, keepGoing, verbose):
     mediaList = []
+    mediaTypeId = 0
+    
+    query = "SELECT mediaTypeId FROM fileType WHERE fileType='%s'"
     
     if verbose:
         print "--- Searching for media in post..."
@@ -191,42 +253,67 @@ def findMedia(post, keepGoing, verbose):
     if "photos" in post:
         for line in post["photos"]:
             print "--- Found photo"
-            mediaList.append(line["original_size"]["url"])
+            photoUrl = line["original_size"]["url"]
+            path = urlparse(photoUrl).path
+            extension = os.path.splitext(path)[1].strip(".")
+            if verbose:
+                print "--- Looking up its extension, %s" % extension
+            mediaTypeId = queryDbforId(cnx, cursor, query, extension, verbose)
+            mediaList.append([photoUrl, mediaTypeId])
+            if verbose:
+                print "--- Adding it to media list..."
+                print "    Url: %s" % photoUrl
+                print "    Media type id: %s" % mediaTypeId
     elif "video_url" in post:
         print "--- Found video"
-        mediaList.append(post["video_url"])
+        videoUrl = post["video_url"]
+        path = urlparse(videoUrl).path
+        extension = os.path.splitext(path)[1].strip(".")
+        if verbose:
+            print "--- Looking up its extension, %s" % extension
+        mediaTypeId = queryDbforId(cnx, cursor, query, extension, verbose)
+        mediaList.append([videoUrl, mediaTypeId])
+        if verbose:
+            print "--- Adding it to media list..."
+            print "    Url: %s" % videoUrl
+            print "    Media type id: %s" % mediaTypeId
     else:
         if verbose:
             print "+++ Did not find photos or video"
         if not keepGoing:
             onError(5, "Did not find photos or video")
+            
+    if len(mediaList) == 1:
+        print "--- Found 1 item"
+    elif len(mediaList) >= 2:
+        print "--- Found %s items" % len(mediaList)
         
     return mediaList   
     
-def checkMedia(line, downloadDir, animatedDir, videoDir, verbose):
-    url = line
-    
-    savePath = downloadDir
-    
-    for fileType in animatedTypes:
-        if url.lower().endswith(fileType):
-            if verbose:
-                print "--- File is animated"
-            savePath = animatedDir
-            break
-    
-    if savePath != animatedDir:
-        for fileType in videoTypes:
-            if url.lower().endswith(fileType):
-                if verbose:
-                    print "--- File is video"
-                savePath = videoDir
-                break
-    
-    if verbose and savePath != animatedDir and savePath != videoDir:
-        print "--- File is not animated and not video"
-        
-    return url, savePath
+
+#def checkMedia(mediaUrl, mediaTypeId, downloadDir, animatedDir, videoDir, verbose):
+#    
+#    savePath = downloadDir
+#    
+#    for fileType in animatedTypes:
+#        if mediaUrl.lower().endswith(fileType):
+#            if verbose:
+#                print "--- File is animated"
+#            savePath = animatedDir
+#            break
+#    
+#    if savePath != animatedDir:
+#        for fileType in videoTypes:
+#            if mediaUrl.lower().endswith(fileType):
+#                if verbose:
+#                    print "--- File is video"
+#                savePath = videoDir
+#                break
+#    
+#    if verbose and savePath != animatedDir and savePath != videoDir:
+#        print "--- File is not animated and not video"
+#        
+#    return mediaUrl, savePath
 
 
 

@@ -2,9 +2,13 @@
 # -*- coding: utf-8 -*-
 # Encoding: UTF-8
 
-import ConfigParser, os, sys
+import ConfigParser, os, sys, shlex
 
 from urllib2 import urlopen, URLError, HTTPError
+from subprocess import Popen, PIPE
+from datetime import datetime
+from time import sleep
+from signal import SIGKILL
 
 import mysql.connector as MS
 from mysql.connector import errorcode
@@ -44,6 +48,8 @@ pictureTypes = config.get('file_types', 'pictureTypes').replace(" ", "").split("
 audioTypes = config.get('file_types', 'audioTypes').replace(" ", "").split(",")
 
 fileSizeSuffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+
+timeOut = int(config.get('misc', 'timeOut'))
 
 def onError(errorCode, extra):
     print "\nError %s" % errorCode
@@ -114,6 +120,8 @@ def dbConnect(verbose):
     return cnx, cursor
 
 def queryDbforId(cnx, cursor, query, data, verbose):
+    ##### query example:
+    ##### query = "SELECT <id column> FROM blog WHERE <column>='%s'"
     ids = 0
     
     if verbose:
@@ -131,8 +139,8 @@ def queryDbforId(cnx, cursor, query, data, verbose):
     for line in cursor:
         ids += 1
         rowId = line
-        if verbose:
-            print "RowId[%s]: %s" % (ids, rowId)
+        #if verbose:
+        #    print "--- RowId[%s]: %s" % (ids, rowId)
         
     if ids == 1:
         rowId = int(line[0])
@@ -141,9 +149,52 @@ def queryDbforId(cnx, cursor, query, data, verbose):
     else:
         rowId = 0
         
+    if verbose:
+        print "--- Answer: %s" % rowId
+        
     return rowId
 
+def queryDbSingleAnswer(cnx, cursor, query, data, verbose):
+    ##### query example:
+    ##### query = "SELECT <column> FROM blog WHERE <column>='%s'"
+    ids = 0
+    
+    if verbose:
+        print "--- Executing sql..."
+        print "    mysql> %s;" % query, data
+        
+    try:
+        cursor.execute(query % data)
+    except MS.Error as err:
+        onError(9, "Statement: %s\n%s" % (cursor.statement, err))
+        
+    if verbose:
+        print "--- SQL statement was:\n    %s" % cursor.statement
+        
+    for line in cursor:
+        ids += 1
+        answer = line
+        #if verbose:
+        #    print "--- RowId[%s]: %s" % (ids, answer)
+        
+    if ids == 1:
+        answer = line[0]
+    elif ids >=2:
+        onError(10, "Multiple rows found.\nBetter look into this")
+    else:
+        answer = ""
+        
+    if verbose:
+        print "--- Answer: %s" % answer
+         
+    return answer
+
 def writeToDb(cnx, cursor, sql, data, verbose):
+    # add_blog = ("INSERT IGNORE INTO blog "
+    #             "(blog, blogTitle, blogUpdated, totalPosts) "
+    #             "VALUES (%s, %s, %s, %s)")
+    # data_blog = (blog, blogTitle, blogUpdated, totalPosts)
+    
     if verbose:
         print "--- Executing sql..."
         print "    mysql> %s;" % sql, data
@@ -232,8 +283,7 @@ def downloadFile(url, path, verbose):
     fullPath = os.path.join(path, fileName)
     
     if verbose:
-        print
-        print "--- Will try to download \n%s \nto \n%s" % (url, fullPath)
+        print "--- Will try to download \n    %s \n    to \n    %s" % (url, fullPath)
     
     print "--- Downloading..."
     try: # open the url
@@ -259,12 +309,144 @@ def downloadFile(url, path, verbose):
         
     return downloadSuccess, fileName, fullPath
 
-def getMediaInfo(fullPath, verbose):
+def getMediaInfo(fullPath, mediaType, keepGoing, verbose):
+    fileSize =0
+    width = 0
+    height = 0
+    duration = 0
+    format = ""
+    videoFormat = ""
+    audioFormat = ""
+    bitRate =0
+    
     if verbose:
         print "--- Getting media info..."
+    
+    ##### general info
+    cmd = "mediainfo %s '%s'" % (("--Inform=General;"
+                                  "%Format%,"
+                                  "%FileSize%,"
+                                  "%OverallBitRate%,"
+                                  "%Duration%"), fullPath)
+    
+    output, error = executeCmd(cmd, verbose)
+    if output == None and error == None:
+        if keepGoing:
+            print "*** Execution took too long"
+        else:
+            onError(13, "Execution took too long")
+    
+    answer = output.replace("\n", "").split(',')
+    
+    try: # format
+        format = answer[0]
+    except:
+        format = ""
+    try: # file size
+        fileSize = int(answer[1])
+    except:
+        fileSize = 0
+    try: # bit rate
+        bitRate = int(answer[2])
+    except:
+        bitRate = 0
+    try: # duration
+        duration = int(answer[3])
+    except:
+        duration = 0
         
+    if verbose:
+        print "--- Media info:"
+        print "    Format:\t\t%s" % format
+        print "    File size:\t\t%s B" % fileSize
+        print "    Bit rate:\t\t%s bps" % bitRate
+        print "    Duration:\t\t%s ms" % duration
         
-    sys.exit(0)
+    ##### video info
+    if mediaType:# == "video":
+        cmd = "mediainfo %s '%s'" % (("--Inform=Video;"
+                                      "%Width%,"
+                                      "%Height%,"
+                                      "%Format%"), fullPath)   
+        
+        output, error = executeCmd(cmd, verbose)
+        if output == None and error == None:
+            if keepGoing:
+                print "*** Execution took too long"
+            else:
+                onError(13, "Execution took too long")
+        
+        answer = output.replace("\n", "").split(',')
+
+        try: # width
+            width = int(answer[0])
+        except:
+            width = 0
+        try: # height
+            height = int(answer[1])
+        except:
+            height = 0
+        try: # format
+            videoFormat = answer[2]
+        except:
+            videoFormat = ""
+        
+        if verbose:
+            print "    Width:\t\t%s px" % width
+            print "    Height:\t\t%s px" % height
+            print "    Video format:\t%s" % videoFormat
+            
+    ##### image info
+    if mediaType:# == "photo" or mediaType == "animated":
+        cmd = "mediainfo %s '%s'" % (("--Inform=Image;"
+                                      "%Width%,"
+                                      "%Height%"), fullPath)   
+        
+        output, error = executeCmd(cmd, verbose)
+        if output == None and error == None:
+            if keepGoing:
+                print "*** Execution took too long"
+            else:
+                onError(13, "Execution took too long")
+        
+        answer = output.replace("\n", "").split(',')
+            
+        try: # width
+            width = int(answer[0])
+        except:
+            width = 0
+        try: # height
+            height = int(answer[1])
+        except:
+            height = 0
+        
+        if verbose:
+            print "    Width:\t\t%s px" % width
+            print "    Height:\t\t%s px" % height
+    
+    ##### audio
+    if mediaType:# == "video" or mediaType == "audio":
+        cmd = "mediainfo %s '%s'" % (("--Inform=Audio;"
+                                      "%Format%"), fullPath)   
+        
+        output, error = executeCmd(cmd, verbose)
+        if output == None and error == None:
+            if keepGoing:
+                print "*** Execution took too long"
+            else:
+                onError(13, "Execution took too long")
+        
+        answer = output.replace("\n", "").split(',')
+            
+        try: # audio format
+            audioFormat = answer[0]
+        except:
+            audioFormat = ""
+        
+        if verbose:
+            print "    Audio format:\t%s" % audioFormat
+        
+    return fileSize, width, height, duration, format, videoFormat, audioFormat, bitRate
         
 def humanFileSize(nbytes):
     if nbytes == 0: return '0 B'
@@ -294,4 +476,22 @@ def checkBlogExists(blog, verbose):
      
     return blogExists
 
+def executeCmd(cmd, verbose):
+    if verbose:
+        print "--- Cmd:\n    %s" % cmd 
+    args = shlex.split(cmd)
+    
+    start = datetime.now()
+    proc = Popen(args, stdout=PIPE, stderr=PIPE)
+    while proc.poll() is None:
+        sleep(0.1)
+        now = datetime.now()
+        if (now - start).seconds > timeOut:
+            os.kill(proc.pid, SIGKILL)
+            os.waitpid(-1, os.WNOHANG)
+            return (None, None)
+    
+    output, error = proc.communicate()
+    
+    return (output, error)
 

@@ -44,7 +44,7 @@ TABLES['media'] = (
     "`format` varchar(7), "
     "`videoFormat` varchar(5), "
     "`audioFormat` varchar(5), "
-    "`fps` int(5), "
+    "`bitRate` int(5), "
     "PRIMARY KEY (`mediaId`) "
     ") ENGINE=InnoDB")
 
