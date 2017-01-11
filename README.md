@@ -6,4 +6,5 @@ MySql cheatsheet:
 ==============
 # mysql -upyTumblr -ppyTumblrPass pyTumblr
 
-mysql> 
+count videos
+mysql> SELECT "videos", COUNT(*) FROM media WHERE mediaTypeId=(SELECT mediaTypeId FROM mediaType WHERE mediaType='video');

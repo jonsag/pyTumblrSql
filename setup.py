@@ -27,6 +27,9 @@ TABLES['blog'] = (
     "`totalPosts` int(6) DEFAULT 0, "
     "`postsRetrieved` int(11) DEFAULT 0, "
     "`itemsRetrieved` int(11) DEFAULT 0, "
+    "`animatedItems` int(11) DEFAULT 0, "
+    "`videoItems` int(11) DEFAULT 0, "
+    "`photoItems` int(11) DEFAULT 0, "
     "PRIMARY KEY (`blogId`) "
     ") ENGINE=InnoDB")
 
@@ -53,7 +56,7 @@ TABLES['mediaInBlog'] = (
     "`id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT, "
     "`mediaId` int(11) UNSIGNED, "
     "`blogId` int(11) UNSIGNED, "
-    "`postId` int(15) UNSIGNED, "
+    "`postId` varchar(15), "
     "`postTime` DATETIME, "
     "PRIMARY KEY (`id`) "
     ") ENGINE=InnoDB")
