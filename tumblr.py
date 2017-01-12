@@ -14,7 +14,9 @@ from urlparse import urlparse
 from modules import (consumer_key, consumer_secret, oauth_token, oauth_secret, 
                      animatedTypes, videoTypes, 
                      queryDbforId, queryDbSingleAnswer, writeToDb, 
-                     onError, numbering, checkFileExists, downloadFile, getMediaInfo)
+                     onError, numbering, checkFileExists, downloadFile, getMediaInfo, 
+                     whereToSaveFile, countUpItemsRetrieved, 
+                     writeMediaInfo, isMediaInBlog, addMediaInBlog, countUpMediaForBlog)
 
 def authenticateClient(verbose):
     
@@ -105,7 +107,7 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                        "WHERE blog=%s")
         data_update_blog = (blogUpdated, totalPosts, blog)
         cursor = writeToDb(cnx, cursor, update_blog, data_update_blog, verbose)
-        
+
     if verbose:
         print "--- BlogId: %s" % blogId
 
@@ -173,113 +175,50 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                         downloadSuccess = False     
                           
                         ##### determine where to save file     
-                        if verbose:
-                            print "--- Looking up media type..."        
-                        query = "SELECT mediaType FROM mediaType WHERE mediaTypeId='%s'"
-                        mediaType = queryDbSingleAnswer(cnx, cursor, query, mediaTypeId, verbose)
-                        if verbose:
-                            print "--- Media type: %s" % mediaType
-                        if mediaType == "animated":
-                            savePath = animatedDir
-                            
-                        elif mediaType == "video":
-                            savePath = videoDir
-                            
-                        elif mediaType == "picture":
-                            savePath = downloadDir
-                            #sys.exit(0)
-                        if verbose:
-                            print "--- Will save to:\n    %s" % savePath
+                        savePath, mediaType = whereToSaveFile(cnx, cursor, mediaTypeId, 
+                                                              downloadDir, animatedDir, videoDir, verbose)
 
-                        query = "SELECT mediaId FROM media WHERE fileName='%s'"
+                        mediaId_query = "SELECT mediaId FROM media WHERE fileName='%s'"
                         
                         ##### check if file already exists
                         fileName = mediaUrl.split('/')[-1]
                         if verbose:
                             print "--- Checking if file is in database..."
-                        mediaId = queryDbforId(cnx, cursor, query, fileName, verbose) # returns >0 if media is in db
+                        mediaId = queryDbforId(cnx, cursor, mediaId_query, fileName, verbose) # returns >0 if media is in db
                         
                         downloadSuccess = True
-                        newMedia = False
-                        if not mediaId: # this media is not in db
+                        
+                        if not mediaId: # this media is not in db,aka not downloaded before
                             newMedia = True
                             if verbose:
-                                print "--- File is not in database"                  
+                                print "--- File is not in database"  
+                            ##### download file                
                             downloadSuccess, fileName, filePath = downloadFile(mediaUrl, savePath, verbose)
                             if downloadSuccess:
                                 if verbose:
-                                    print "--- Adding to database..."
-                                (fileSize, width, height, duration, 
-                                 format, videoFormat, audioFormat, 
-                                 bitRate) = getMediaInfo(filePath, 
-                                                         mediaType, keepGoing, verbose) # get media info
-                                ##### write media info to db
-                                add_media = ("INSERT IGNORE INTO media "
-                                             "(path, filename, mediaTypeId, fileSize, "
-                                             "width, height, duration, format, "
-                                             "videoFormat, audioFormat, bitRate) "
-                                             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
-                                data_media = (savePath, fileName, mediaTypeId, fileSize, 
-                                              width, height, duration, format, 
-                                              videoFormat, audioFormat, bitRate)
-                                cursor = writeToDb(cnx, cursor, add_media, data_media, verbose)
-                                mediaId = cursor.lastrowid
+                                    print "--- Writing to database..."
+                                mediaId = writeMediaInfo(cnx, cursor, filePath, mediaType, 
+                                                         keepGoing, fileName, savePath, mediaTypeId, verbose)
+                                addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose)
+                                countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose)
+                                countUpItemsRetrieved(cnx, cursor, blog, verbose)
+                                
                             if verbose and not downloadSuccess:
                                 print "*** Failed to download file"
-                        else:
+                        else: # this media is already in database
                             if verbose:
                                 print "+++ Already exists\n    Adding to database for '%s' if not already there..." % blog
                             else:
                                 print "+++ Already exists. Skipping file..."
-                        # new media sequence ends here
                         
-                        if verbose:
-                            print "--- Checking if this media and post is registered to this blog..."
-                        # check if media is linked to this blog
-                        query_mediaInBlog = ("SELECT id FROM mediaInBlog WHERE "
-                                             "mediaId='%s' AND "
-                                             "blogid='%s' AND "
-                                             "postId='%s'")
-                        data_mediaInBlog = (mediaId, blogId, postId)
-                        isInTable = queryDbforId(cnx, cursor, query_mediaInBlog, data_mediaInBlog, verbose)
-                    
-                        if not isInTable and downloadSuccess: # media is not linked to this blog and download was successfull
-                            if mediaId == 0:
-                                sys.exit(0)
-                            if verbose:
-                                print "--- Not in table\n    Adding..."
-                                
-                            add_media_in_blog = ("INSERT IGNORE INTO mediaInBlog "
-                                                 "(mediaId, blogId, postId, postTime) "
-                                                 "VALUES (%s, %s, %s, %s)")
-                            data_media_in_blog = (mediaId, blogId, postId, postTime)
-                            cursor = writeToDb(cnx, cursor, add_media_in_blog, data_media_in_blog, verbose)
-                            
-                        if newMedia and downloadSuccess:
-                            countUpMedia = True
-                        elif not isInTable:
-                            countUpMedia = True
-                        else:
-                            countUpMedia = False
-                            
-                        if countUpMedia:
-                            if mediaType == "animated":
-                                count_up_item = ("UPDATE blog "
-                                                 "SET animatedItems=animatedItems+1 "
-                                                 "WHERE blog='%s'")
-                            elif mediaType == "video":
-                                count_up_item = ("UPDATE blog "
-                                                 "SET videoItems=videoItems+1 "
-                                                 "WHERE blog='%s'")
-                            elif mediaType == "picture":
-                                count_up_item = ("UPDATE blog "
-                                                 "SET photoItems=photoItems+1 "
-                                                 "WHERE blog='%s'")
-                            cursor = writeToDb(cnx, cursor, count_up_item, blog, verbose)
-                            
-                #if downloadSuccess or not mediaId:                
-                #    sys.exit(0)
-                    
+                            ##### check if this media and this postId already for this blog 
+                            isInTable = isMediaInBlog(cnx, cursor, mediaId, blogId, postId, verbose)
+                        
+                            if not isInTable: # media is not linked to this blog
+                                addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose)
+                                countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose) 
+                                sys.exit(0)                           
+
             print "\n--- Posts processed: %s" % len(posts)
     
     print len(posts)

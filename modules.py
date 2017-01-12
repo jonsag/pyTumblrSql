@@ -495,3 +495,106 @@ def executeCmd(cmd, verbose):
     
     return (output, error)
 
+def whereToSaveFile(cnx, cursor, mediaTypeId, downloadDir, animatedDir, videoDir, verbose):
+    if verbose:
+        print "--- Looking up media type..."        
+    query = "SELECT mediaType FROM mediaType WHERE mediaTypeId='%s'"
+    mediaType = queryDbSingleAnswer(cnx, cursor, query, mediaTypeId, verbose)
+    if verbose:
+        print "--- Media type: %s" % mediaType
+    if mediaType == "animated":
+        savePath = animatedDir
+    elif mediaType == "video":
+        savePath = videoDir
+    elif mediaType == "picture":
+        savePath = downloadDir
+    if verbose:
+        print "--- Will save to:\n    %s" % savePath
+        
+    return savePath, mediaType
+
+def writeMediaInfo(cnx, cursor, filePath, mediaType, keepGoing, fileName, savePath, mediaTypeId, verbose):
+    if verbose:
+        print "--- Adding to database..."
+    (fileSize, width, height, duration, 
+     format, videoFormat, audioFormat, 
+     bitRate) = getMediaInfo(filePath, 
+                             mediaType, keepGoing, verbose) # get media info
+    ##### write media info to db
+    add_media = ("INSERT IGNORE INTO media "
+                 "(path, filename, mediaTypeId, fileSize, "
+                 "width, height, duration, format, "
+                 "videoFormat, audioFormat, bitRate) "
+                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
+    data_media = (savePath, fileName, mediaTypeId, fileSize, 
+                  width, height, duration, format, 
+                  videoFormat, audioFormat, bitRate)
+    cursor = writeToDb(cnx, cursor, add_media, data_media, verbose)
+    mediaId = cursor.lastrowid
+    
+    return mediaId
+
+def countUpItemsRetrieved(cnx, cursor, blog, verbose):
+    if verbose:
+        print "--- Adding to items retrieved..."
+    count_up_items = ("UPDATE blog "
+                     "SET itemsRetrieved=itemsRetrieved+1 "
+                     "WHERE blog=%s")
+    data_count_up_items = (blog, )
+    cursor = writeToDb(cnx, cursor, count_up_items, data_count_up_items, verbose)
+
+def isMediaInBlog(cnx, cursor, mediaId, blogId, postId, verbose):    
+    #verbose = True
+    if verbose:
+        print "--- Checking if this media and post is registered to this blog..."
+    # check if media is linked to this blog
+    query_mediaInBlog = ("SELECT id FROM mediaInBlog WHERE "
+                         "mediaId='%s' AND "
+                         "blogid='%s'")
+    data_mediaInBlog = (mediaId, blogId)
+    isInTable = queryDbforId(cnx, cursor, query_mediaInBlog, data_mediaInBlog, verbose)
+
+    return isInTable
+
+def addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose):
+    if mediaId == 0:
+        sys.exit(0)
+    if verbose:
+        print "--- Not in table\n    Adding..."
+        
+    add_media_in_blog = ("INSERT IGNORE INTO mediaInBlog "
+                         "(mediaId, blogId, postId, postTime) "
+                         "VALUES (%s, %s, %s, %s)")
+    data_media_in_blog = (mediaId, blogId, postId, postTime)
+    cursor = writeToDb(cnx, cursor, add_media_in_blog, data_media_in_blog, verbose)
+    
+def countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose):        
+    if mediaType == "animated":
+        count_up_item = ("UPDATE blog "
+                         "SET animatedItems=animatedItems+1 "
+                         "WHERE blog=%s")
+    elif mediaType == "video":
+        count_up_item = ("UPDATE blog "
+                         "SET videoItems=videoItems+1 "
+                         "WHERE blog=%s")
+    elif mediaType == "picture":
+        count_up_item = ("UPDATE blog "
+                         "SET photoItems=photoItems+1 "
+                         "WHERE blog=%s")
+    data_count_up_item = (blog, )
+    cursor = writeToDb(cnx, cursor, count_up_item, data_count_up_item, verbose)
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
