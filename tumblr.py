@@ -290,6 +290,8 @@ def findMedia(cnx, cursor, post, keepGoing, verbose):
         else:
             pprint(post)
             onError(11, "Problem with video type")
+    elif postType == "text":
+        print "--- Found text\n    Not a wanted post"
     else:
         print "--- Post type: %s -----------------------------------------------------" % postType
         if verbose:
