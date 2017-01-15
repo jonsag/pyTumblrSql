@@ -59,7 +59,7 @@ def onError(errorCode, extra):
     elif errorCode == 2:
         print "No options given"
         usage(errorCode)
-    elif errorCode in (3, 4, 5, 7, 8, 9):
+    elif errorCode in (3, 4, 5, 7, 8, 9, 10, 11):
         print extra
         sys.exit(errorCode)
     elif errorCode == 6:
@@ -513,6 +513,9 @@ def whereToSaveFile(cnx, cursor, mediaTypeId, downloadDir, animatedDir, videoDir
         
     return savePath, mediaType
 
+def addToDlList(cnx, cursor, verbose):
+    sys.exit(0)
+
 def writeMediaInfo(cnx, cursor, filePath, mediaType, keepGoing, fileName, savePath, mediaTypeId, verbose):
     if verbose:
         print "--- Adding to database..."
@@ -531,7 +534,7 @@ def writeMediaInfo(cnx, cursor, filePath, mediaType, keepGoing, fileName, savePa
                   videoFormat, audioFormat, bitRate)
     cursor = writeToDb(cnx, cursor, add_media, data_media, verbose)
     mediaId = cursor.lastrowid
-    
+        
     return mediaId
 
 def countUpItemsRetrieved(cnx, cursor, blog, verbose):
@@ -542,6 +545,8 @@ def countUpItemsRetrieved(cnx, cursor, blog, verbose):
                      "WHERE blog=%s")
     data_count_up_items = (blog, )
     cursor = writeToDb(cnx, cursor, count_up_items, data_count_up_items, verbose)
+    
+    cnx.commit
 
 def isMediaInBlog(cnx, cursor, mediaId, blogId, postId, verbose):    
     #verbose = True
@@ -567,7 +572,7 @@ def addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose):
                          "VALUES (%s, %s, %s, %s)")
     data_media_in_blog = (mediaId, blogId, postId, postTime)
     cursor = writeToDb(cnx, cursor, add_media_in_blog, data_media_in_blog, verbose)
-    
+        
 def countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose):        
     if mediaType == "animated":
         count_up_item = ("UPDATE blog "
@@ -584,7 +589,6 @@ def countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose):
     data_count_up_item = (blog, )
     cursor = writeToDb(cnx, cursor, count_up_item, data_count_up_item, verbose)
 
-    
     
     
     

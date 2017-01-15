@@ -61,6 +61,18 @@ TABLES['mediaInBlog'] = (
     "PRIMARY KEY (`id`) "
     ") ENGINE=InnoDB")
 
+TABLES['downloadList'] = (
+    "CREATE TABLE `downloadList` ( "
+    "`id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT, "
+    "`mediaUrl` varchar(255), "
+    "`path` varchar(255), "
+    "`fileName varchar(255) UNIQUE, "
+    "`mediaTypeId int(11), "
+    "`blogId` int(11), "
+    "`reason` varchar(36), "
+    "PRIMARY KEY (`id`) "
+    ") ENGINE=InnoDB")
+
 TABLES['mediaType'] = (
     "CREATE TABLE `mediaType` ( "
     "`mediaTypeId` int(2) UNSIGNED NOT NULL AUTO_INCREMENT, "

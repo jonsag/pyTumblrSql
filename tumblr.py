@@ -15,7 +15,7 @@ from modules import (consumer_key, consumer_secret, oauth_token, oauth_secret,
                      animatedTypes, videoTypes, 
                      queryDbforId, queryDbSingleAnswer, writeToDb, 
                      onError, numbering, checkFileExists, downloadFile, getMediaInfo, 
-                     whereToSaveFile, countUpItemsRetrieved, 
+                     whereToSaveFile, addToDlList, countUpItemsRetrieved, 
                      writeMediaInfo, isMediaInBlog, addMediaInBlog, countUpMediaForBlog)
 
 def authenticateClient(verbose):
@@ -116,7 +116,8 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
     
     while True:
         print "--- Starting downloads..."
-        if chunkNo * chunkSize >= totalPosts: # check if we reached the end
+        if (chunkNo * chunkSize >= totalPosts or
+            postNo >= totalPosts): # check if we reached the end
             print "*** No more posts"
             break
         else: 
@@ -125,9 +126,11 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
             chunkNo += 1
             
             offset = totalPosts - chunkNo * chunkSize
-            if offset < 0:
+            if offset <= 0:
                 chunkSize = chunkSize + offset
                 offset = 0
+                if chunkSize <= 0:
+                    chunkSize = 1
             
             print "--- Getting %s%s chunk..." % (chunkNo, numbering(chunkNo))
             print "    Offset: %s" % offset
@@ -153,6 +156,7 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                     pprint(post)
                     print "----------"
                 
+                postId = 0
                 try:
                     for line in post['trail']:
                         postId = line['post']['id']
@@ -202,22 +206,26 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                                 addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose)
                                 countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose)
                                 countUpItemsRetrieved(cnx, cursor, blog, verbose)
-                                
-                            if verbose and not downloadSuccess:
-                                print "*** Failed to download file"
+                            else:
+                                if verbose:
+                                    print "*** Failed to download file"
+                                    print "--- Adding file to db for later download..."
+                                    #addToDlList(cnx, cursor, mediaUrl, fileName, savePath, 
+                                    #            mediaTypeId, blog, "download error", verbose)
+                            
                         else: # this media is already in database
                             if verbose:
                                 print "+++ Already exists\n    Adding to database for '%s' if not already there..." % blog
                             else:
                                 print "+++ Already exists. Skipping file..."
                         
-                            ##### check if this media and this postId already for this blog 
+                            ##### check if this media and already for this blog 
                             isInTable = isMediaInBlog(cnx, cursor, mediaId, blogId, postId, verbose)
                         
                             if not isInTable: # media is not linked to this blog
                                 addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose)
                                 countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose) 
-                                sys.exit(0)                           
+                                #sys.exit(0)                           
 
             print "\n--- Posts processed: %s" % len(posts)
     
@@ -256,17 +264,32 @@ def findMedia(cnx, cursor, post, keepGoing, verbose):
                 print "    Media type id: %s" % mediaTypeId
     elif postType == "video":
         print "--- Found video"
-        videoUrl = post["video_url"]
-        path = urlparse(videoUrl).path
-        extension = os.path.splitext(path)[1].strip(".")
+        videoType = post['video_type']
         if verbose:
-            print "--- Looking up its extension, %s" % extension
-        mediaTypeId = queryDbforId(cnx, cursor, query, extension, verbose)
-        mediaList.append([videoUrl, mediaTypeId])
-        if verbose:
-            print "--- Adding it to media list..."
-            print "    Url: %s" % videoUrl
-            print "    Media type id: %s" % mediaTypeId
+            print "Video type: %s" % videoType
+        if  videoType == "tumblr":
+            videoUrl = post["video_url"]
+            path = urlparse(videoUrl).path
+            extension = os.path.splitext(path)[1].strip(".")
+            if verbose:
+                print "--- Looking up its extension, %s" % extension
+            mediaTypeId = queryDbforId(cnx, cursor, query, extension, verbose)
+            mediaList.append([videoUrl, mediaTypeId])
+            if verbose:
+                print "--- Adding it to media list..."
+                print "    Url: %s" % videoUrl
+                print "    Media type id: %s" % mediaTypeId
+        elif videoType == "wedgies":
+            print "+++ Wedgie\n    Not a downloadable item"
+        elif videoType == "unknown":
+            print "+++ Unknown video type"
+        elif videoType == "youtube":
+            print "+++ YouTube video\n    Not downloadable at this moment"
+        elif videoType == "vimeo":
+            print "+++ Vimeo video\n    Not downloadable at this moment"
+        else:
+            pprint(post)
+            onError(11, "Problem with video type")
     else:
         print "--- Post type: %s -----------------------------------------------------" % postType
         if verbose:
