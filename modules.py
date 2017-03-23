@@ -53,13 +53,13 @@ timeOut = int(config.get('misc', 'timeOut'))
 
 def onError(errorCode, extra):
     print "\nError %s" % errorCode
-    if errorCode == 1:
+    if errorCode in (1, 12):
         print extra
         usage(errorCode)
     elif errorCode == 2:
         print "No options given"
         usage(errorCode)
-    elif errorCode in (3, 4, 5, 7, 8, 9, 10, 11):
+    elif errorCode in (3, 4, 5, 7, 8, 9, 10, 11, 13):
         print extra
         sys.exit(errorCode)
     elif errorCode == 6:
@@ -72,6 +72,8 @@ def usage(exitCode):
     print "%s -b <blog_name> " % sys.argv[0]
     print "\nMisc options:"
     print "-k    keep going on non fatal errors"
+    print "-u    update all blogs"
+    print "-d    delete blog stated with -b"
     print "-v    verbose output"
     print "-h    prints this"
 
@@ -198,9 +200,26 @@ def writeToDb(cnx, cursor, sql, data, verbose):
     if verbose:
         print "--- Executing sql..."
         print "    mysql> %s;" % sql, data
-    
+    #sys.exit(0)
     try:
         cursor.execute(sql, data)
+    except MS.Error as err:
+        onError(8, "Statement: %s\n%s" % (cursor.statement, err))
+        
+    if verbose:
+        print "--- SQL statement was:\n    %s" % cursor.statement
+        
+    cnx.commit()
+    
+    return cursor
+
+def deleteFromDb(cnx, cursor, sql, verbose):    
+    if verbose:
+        print "--- Executing sql..."
+        print "    mysql> %s;" % sql
+   
+    try:
+        cursor.execute(sql)
     except MS.Error as err:
         onError(8, "Statement: %s\n%s" % (cursor.statement, err))
         

@@ -12,7 +12,7 @@ from datetime import datetime
 from urlparse import urlparse
 
 from modules import (consumer_key, consumer_secret, oauth_token, oauth_secret, 
-                     animatedTypes, videoTypes, 
+                     animatedTypes, videoTypes, checkDirectories, 
                      queryDbforId, queryDbSingleAnswer, writeToDb, 
                      onError, numbering, checkFileExists, downloadFile, getMediaInfo, 
                      whereToSaveFile, addToDlList, countUpItemsRetrieved, 
@@ -44,6 +44,13 @@ def authenticateClient(verbose):
         print "--------------------"
     
     return client
+
+def processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, keepGoing, verbose):
+    mainDir, downloadDir, animatedDir, videoDir = checkDirectories(defaultDownloadDir, subDir, blog, animatedDir, videoDir, verbose)
+    
+    posts = getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, keepGoing, verbose)
+
+    return posts
 
 def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, keepGoing, verbose):
     
@@ -287,11 +294,17 @@ def findMedia(cnx, cursor, post, keepGoing, verbose):
             print "+++ YouTube video\n    Not downloadable at this moment"
         elif videoType == "vimeo":
             print "+++ Vimeo video\n    Not downloadable at this moment"
+        elif videoType == "vine":
+            print "+++ Vine video\n    Not downloadable at this moment"
+        elif videoType == "instagram":
+            print "+++ Instagram video\n    Not downloadable at this moment"
         else:
             pprint(post)
             onError(11, "Problem with video type")
     elif postType == "text":
-        print "--- Found text\n    Not a wanted post"
+        print "+++ Found text\n    Not a wanted post"
+    elif postType == "link":
+        print "+++ Found link\n    Not a wanted post"
     else:
         print "--- Post type: %s -----------------------------------------------------" % postType
         if verbose:

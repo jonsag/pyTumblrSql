@@ -60,6 +60,12 @@ count all items retrieved
 mysql> SELECT SUM(itemsRetrieved) AS 'items retrieved' 
 FROM blog;
 
+number of files and disk space used
+==========
+mysql> SELECT COUNT(*) AS 'Number of files' , SUM(fileSize)/1024/1024/1024 AS 'GiB' 
+FROM media;
+
+
 some statistics of videos
 ==============
 mysql> SELECT COUNT(*) AS 'number of videos', 
@@ -86,9 +92,6 @@ ORDER By blog.blog;
 
 
    
-
-
-	
 		
 
 		
