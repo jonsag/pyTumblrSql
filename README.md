@@ -89,10 +89,29 @@ LEFT JOIN media on media.mediaId = mediaInBlog.mediaId
 LEFT JOIN blog ON blog.blogID = mediaInBlog.blogId 
 ORDER By blog.blog;
 
+delete all downloaded data, except blog names
+==============
+mysql> TRUNCATE TABLE downloadList;
+mysql> TRUNCATE TABLE mediaInBlog;
+mysql> TRUNCATE TABLE media;
+mysql> UPDATE blog
+SET allItemsRetrieved = 0, 
+totalPosts = 0,
+postsRetrieved = 0,
+itemsRetrieved = 0,
+animatedItems = 0,
+videoItems = 0,
+photoItems = 0;
 
 
-   
-		
 
-		
-		
+
+
+
+
+
+
+
+
+
+

@@ -45,14 +45,14 @@ def authenticateClient(verbose):
     
     return client
 
-def processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, keepGoing, verbose):
+def processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, reCheck, keepGoing, verbose):
     mainDir, downloadDir, animatedDir, videoDir = checkDirectories(defaultDownloadDir, subDir, blog, animatedDir, videoDir, verbose)
     
-    posts = getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, keepGoing, verbose)
+    posts = getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, reCheck, keepGoing, verbose)
 
     return posts
 
-def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, keepGoing, verbose):
+def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, videoDir, reCheck, keepGoing, verbose):
     
     from modules import chunkSize
     
@@ -74,6 +74,24 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
     blogUpdatedUnix = blogContents['blog']['updated']
     blogUpdated = datetime.fromtimestamp(int(blogUpdatedUnix)).strftime('%Y-%m-%d %H:%M:%S')
     totalPosts = blogContents['blog']['total_posts']
+    
+    query = "SELECT postsRetrieved FROM blog WHERE blog='%s'"
+    data = (blog)
+    postsRetrieved = queryDbSingleAnswer(cnx, cursor, query, data, verbose)
+    
+    if postsRetrieved == "":
+        postsRetrieved = 0
+
+    if totalPosts > postsRetrieved:
+        # write '0' to blog.allItemsRetrieved
+        update_blog = ("UPDATE blog "
+                   "SET allItemsRetrieved=%s "
+                   "WHERE blog=%s")
+        data_update_blog = ("0", blog)
+        cursor = writeToDb(cnx, cursor, update_blog, data_update_blog, verbose)
+    else:
+        print "--- No new posts since last check"
+        #sys.exit(0)
     
     ##### print report
     print "\n%s:\n--------------------" % blog 
@@ -118,29 +136,43 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
     if verbose:
         print "--- BlogId: %s" % blogId
 
+    # will we recheck?
+    if reCheck:
+        postsRetrievedOffset = 0 
+    else:
+        postsRetrievedOffset = postsRetrieved
+
     ##### calculate how many chunks we will try to receive
-    totalChunks = int(math.ceil(totalPosts / chunkSize))
+    totalChunks = int(math.ceil((totalPosts - postsRetrievedOffset)/ chunkSize))
     
     while True:
         print "--- Starting downloads..."
-        if (chunkNo * chunkSize >= totalPosts or
+        if (chunkNo * chunkSize >= (totalPosts - postsRetrievedOffset) or
             postNo >= totalPosts): # check if we reached the end
             print "*** No more posts"
+            # write '1' to blog.allItemsRetrieved
+            update_blog = ("UPDATE blog "
+                       "SET allItemsRetrieved=%s "
+                       "WHERE blog=%s")
+            data_update_blog = ("1", blog)
+            cursor = writeToDb(cnx, cursor, update_blog, data_update_blog, verbose)
             break
         else: 
             partNo = 0
             
             chunkNo += 1
             
-            offset = totalPosts - chunkNo * chunkSize
+            offset = totalPosts - postsRetrievedOffset - chunkNo * chunkSize
             if offset <= 0:
                 chunkSize = chunkSize + offset
                 offset = 0
                 if chunkSize <= 0:
                     chunkSize = 1
             
-            print "--- Getting %s%s chunk..." % (chunkNo, numbering(chunkNo))
+            print "\n--- Getting %s%s chunk..." % (chunkNo, numbering(chunkNo))
+            print "========================================"
             print "    Offset: %s" % offset
+            print "    Posts already retrived offset: %s" % postsRetrievedOffset
             print "    Chunk size: %s" % chunkSize
             print "    Post %s to %s of %s" % (totalPosts - chunkNo * chunkSize + 1, 
                                                totalPosts - (chunkNo -1) * chunkSize, 
@@ -154,7 +186,7 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                 postNo += 1
                 partNo += 1
                 print "\n--- Blog: %s" % blog
-                print "    Post: %s / %s" % (postNo, totalPosts)
+                print "    Post: %s / %s" % (postNo + postsRetrievedOffset, totalPosts)
                 print "    Chunk: %s / %s" % (chunkNo, totalChunks)
                 print "    Part: %s / %s" % (partNo, chunkSize)
                 
@@ -182,6 +214,7 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                 downloadSuccess = False
                     
                 if mediaList:
+                    handledItems = 0
                     for mediaUrl, mediaTypeId in mediaList:
                         downloadSuccess = False     
                           
@@ -213,6 +246,8 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                                 addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose)
                                 countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose)
                                 countUpItemsRetrieved(cnx, cursor, blog, verbose)
+                                handledItems += 1
+                                #postsRetrieved = updatePostsRetrieved(cnx, cursor, postNo, postsRetrieved, postsRetrievedOffset, blog, verbose)
                             else:
                                 if verbose:
                                     print "*** Failed to download file"
@@ -232,8 +267,12 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
                             if not isInTable: # media is not linked to this blog
                                 addMediaInBlog(cnx, cursor, mediaId, blogId, postId, postTime,verbose)
                                 countUpMediaForBlog(cnx, cursor, mediaType, blog, verbose) 
-                                #sys.exit(0)                           
-
+                            handledItems += 1
+                            #postsRetrieved = updatePostsRetrieved(cnx, cursor, postNo, postsRetrieved, postsRetrievedOffset, blog, verbose)
+                        if handledItems >= len(mediaList):
+                            postsRetrieved = updatePostsRetrieved(cnx, cursor, postNo, postsRetrieved, postsRetrievedOffset, blog, verbose)
+                else:
+                    postsRetrieved = updatePostsRetrieved(cnx, cursor, postNo, postsRetrieved, postsRetrievedOffset, blog, verbose)
             print "\n--- Posts processed: %s" % len(posts)
     
     print len(posts)
@@ -243,6 +282,19 @@ def getPosts(cnx, cursor, client, blog, mainDir, downloadDir, animatedDir, video
     
     posts = blogContents
     return posts
+
+def updatePostsRetrieved(cnx, cursor, postNo, postsRetrieved, postsRetrievedOffset, blog, verbose):
+    if postNo + postsRetrievedOffset > postsRetrieved: 
+        #     write postNo to blog.postsRetrieved
+        update_blog = ("UPDATE blog "
+                       "SET postsRetrieved=%s "
+                       "WHERE blog=%s")
+        data_update_blog = (postNo + postsRetrievedOffset, blog)
+        cursor = writeToDb(cnx, cursor, update_blog, data_update_blog, verbose)
+        
+        postsRetrieved = postNo
+        
+    return postsRetrieved
     
 def findMedia(cnx, cursor, post, keepGoing, verbose):
     mediaList = []

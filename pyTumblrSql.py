@@ -17,9 +17,10 @@ try:
                                  'b:' 
                                  'k'
                                  'u'
+                                 'r'
                                  'd'
                                  'vh',
-                                 ['blog:', 'keepgoing', 'update', 'delete', 'verbose', 'help'])
+                                 ['blog:', 'keepgoing', 'update', 'recheck', 'delete', 'verbose', 'help'])
 
 except getopt.GetoptError as e:
     onError(1, str(e))
@@ -30,6 +31,7 @@ if len(sys.argv) == 1:  # no options passed
 blog = ""
 updateBlogs = False
 deleteBlog = False
+reCheck = False
 verbose = False
 keepGoing = False
 
@@ -40,6 +42,8 @@ for option, argument in myopts:
         keepGoing = True
     elif option in ('-u', '--update'):
         updateBlogs = True
+    elif option in ('-r', '--recheck'):
+        reCheck = True
     elif option in ('-d', '--delete'):
         deleteBlog = True
     elif option in ('-v', '--verbose'):  # verbose output
@@ -66,7 +70,8 @@ if updateBlogs:
     for row in blogs:
         blog = row[0]
         print "--- Updating %s..." % blog
-        posts = processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, keepGoing, verbose)
+        posts = processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, reCheck, keepGoing, verbose)
+
 elif deleteBlog:
     fileNames = []
     if not blog:
@@ -107,7 +112,7 @@ elif deleteBlog:
 else:
     if not checkBlogExists(blog, verbose): # check if the blog really exists
         onError(7, "Blog %s does not exist" % blog)
-    posts = processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, keepGoing, verbose)
+    posts = processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, reCheck, keepGoing, verbose)
 
 
 
