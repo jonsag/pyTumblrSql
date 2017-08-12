@@ -62,7 +62,7 @@ def onError(errorCode, extra):
     elif errorCode in (3, 4, 5, 7, 8, 9, 10, 11, 13):
         print extra
         sys.exit(errorCode)
-    elif errorCode == 6:
+    elif errorCode in (6, 14):
         print extra
         return
         

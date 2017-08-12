@@ -4,7 +4,15 @@ A tool to download tumblr pics and vids and log all files and progress to MySql 
 
 MySql cheatsheet:
 ==========================================
-# mysql -upyTumblr -ppyTumblrPass pyTumblr
+
+clear all data
+==========================================
+$ mysqldump -d -upyTumblr -ppyTumblrPass --add-drop-table pyTumblr > pyTumblr.sql
+$ mysqldump -upyTumblr -ppyTumblrPass pyTumblr < pyTumblr.sql
+
+connect to database
+==========================================
+$ mysql -upyTumblr -ppyTumblrPass pyTumblr
 
 view media
 ==============

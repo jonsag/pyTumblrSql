@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # Encoding: UTF-8
 
-import math, os, sys
+import math, os
 import pytumblr
 
 from pprint import pprint
@@ -12,10 +12,10 @@ from datetime import datetime
 from urlparse import urlparse
 
 from modules import (consumer_key, consumer_secret, oauth_token, oauth_secret, 
-                     animatedTypes, videoTypes, checkDirectories, 
+                     checkDirectories, 
                      queryDbforId, queryDbSingleAnswer, writeToDb, 
-                     onError, numbering, checkFileExists, downloadFile, getMediaInfo, 
-                     whereToSaveFile, addToDlList, countUpItemsRetrieved, 
+                     onError, numbering, downloadFile, 
+                     whereToSaveFile, countUpItemsRetrieved, 
                      writeMediaInfo, isMediaInBlog, addMediaInBlog, countUpMediaForBlog)
 
 def authenticateClient(verbose):

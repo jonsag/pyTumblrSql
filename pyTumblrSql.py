@@ -6,9 +6,9 @@ import sys, getopt, os
 
 from shutil import rmtree
 
-from modules import (onError, usage, dbConnect, checkBlogExists, checkDirectories, 
+from modules import (onError, usage, dbConnect, checkBlogExists, 
                      defaultDownloadDir, subDir, animatedDir, videoDir, 
-                     queryDbforId, deleteFromDb, queryDbSingleAnswer)
+                     queryDbforId, deleteFromDb)
 
 from tumblr import authenticateClient, processBlog
 
@@ -62,15 +62,20 @@ if updateBlogs:
         print "--- Updating all blogs..."
         print "--- Getting list of blogs..."
 
-    cursor.execute('SELECT blog FROM blog')
+    cursor.execute('SELECT blog FROM blog ORDER BY blogId')
     blogs = row = cursor.fetchall()
     
     if verbose:
         print "--- Will update %s blogs..." % len(blogs)
     for row in blogs:
         blog = row[0]
-        print "--- Updating %s..." % blog
-        posts = processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, reCheck, keepGoing, verbose)
+        if not checkBlogExists(blog, verbose): # check if the blog really exists
+            onError(14, "Blog %s does not exist" % blog)
+            if not keepGoing:
+                sys.exit(14)
+        else:
+            print "--- Updating %s..." % blog
+            posts = processBlog(defaultDownloadDir, subDir, blog, animatedDir, videoDir, cnx, cursor, client, reCheck, keepGoing, verbose)
 
 elif deleteBlog:
     fileNames = []
